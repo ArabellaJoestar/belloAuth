@@ -1,0 +1,18 @@
+# Dependências
+node_modules/
+
+# Build do NestJS
+dist/
+
+# Variáveis de ambiente (NUNCA comite o .env)
+.env
+.env.*
+!.env.example
+
+# Logs e debug
+npm-debug.log
+yarn-error.log
+
+# Arquivos de sistema operacional
+.DS_Store
+Thumbs.db
