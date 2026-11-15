@@ -1,132 +1,242 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Documentação Técnica — Ecossistema OAuth 2.0 & Module Federation
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## 1. Visão Geral da Arquitetura
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Este projeto implementa um ecossistema de autenticação e autorização **OAuth 2.0** de papel duplo (*Dual-Context Identity Architecture*), projetado com foco em segurança, superfície mínima de dependências externas e alta disponibilidade de sessão.
 
-## Description
+### Papéis do Sistema
+1. **Identity Provider (Contexto Inbound — `ISSUED_BY_US`):** Fornece telas de autenticação, validação de múltiplos fatores (2FA), links de acesso sem senha (*Magic Links*), emissão de códigos de autorização com desafio **PKCE (S256)**, concessão de tokens M2M (*Client Credentials*) e rotação de *Refresh Tokens*.
+2. **External Consumer (Contexto Outbound — `ACQUIRED_EXTERNAL`):** Atua como cliente ativo requisitando tokens OAuth 2.0 de provedores externos, registrando a sessão localmente e monitorando o tempo de vida do token adquirido.
+3. **Motor Passivo de Webhooks:** Um *Cron Job* varre periodicamente as sessões ativas (tanto emitidas internamente quanto adquiridas externamente) e dispara alertas assinados via **HMAC-SHA256** para rotas configuráveis sempre que um token entra na janela de expiração iminente.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## 2. Stack Tech
 
-```bash
-$ npm install
-```
+### Backend (`/backend` — Porta `:3000`)
+* **Core:** NestJS (`@latest`) + TypeScript (`@latest`) configurado com `spec: false` no `nest-cli.json`.
+* **Validação de Dados e Ambiente:** Zod (`v4`) acoplado via `ZodValidationPipe` e validação na inicialização do `ConfigModule`.
+* **Persistência Relacional Agnóstica:** TypeORM (`@latest`). As entidades utilizam tipos universais (`varchar`, `boolean`, `simple-json`, `timestamp`, `decimal`) para permitir a troca transparente entre PostgreSQL, MySQL, MariaDB ou SQLite.
+* **Gerenciamento de Sessão e Blacklist:** Redis (`ioredis`) como fonte em memória para tokens ativos, desafios 2FA/PKCE/Magic Links e revogação instantânea (*JWT Blacklisting* por `jti`).
+* **Criptografia Nativa:** Uso exclusivo do módulo nativo `node:crypto` (`scryptSync`, `timingSafeEqual`, `createHash`, `createHmac`, `randomBytes`), eliminando dependências C++ externas.
+* **Comunicação Transacional:** Nodemailer integrado ao servidor SMTP (Mailpit em ambiente de desenvolvimento).
 
-## Compile and run the project
+### Micro-Frontends (`/provider-app` na Porta `5173` e `/client-app` na Porta `5174`)
+* **Core:** React 19 + Vite 6 + TypeScript.
+* **Estilização:** Tailwind CSS (`v4`) integrado nativamente via `@tailwindcss/vite`.
+* **Arquitetura Federada:** `@originjs/vite-plugin-federation`.
+  * **`provider-app` (Remote):** Renderiza a interface do provedor de identidade e expõe em tempo de execução os módulos `./pkce`, `./WebhookMonitor` e `./SessionAuditTable` através do manifesto `remoteEntry.js`.
+  * **`client-app` (Host):** Consome os módulos remotos do `provider-app` e simula tanto uma SPA interna (fluxo *Authorization Code + PKCE*) quanto uma aplicação parceira externa (*Client Credentials* e aquisição *Outbound*).
 
-```bash
-# development
-$ npm run start
+---
 
-# watch mode
-$ npm run start:dev
+## 3. Guia de Setup e Execução Local
 
-# production mode
-$ npm run start:prod
-```
+### 3.1. Pré-requisitos
+* **Node.js** (versão 20 LTS ou superior)
+* **Docker** e **Docker Compose**
 
-## Run tests
+### 3.2. Subindo a Infraestrutura (PostgreSQL, Redis e Mailpit)
+Na pasta `backend/`, certifique-se de que o arquivo `.env` está configurado conforme o modelo abaixo:
 
-```bash
-# unit tests
-$ npm run test
+~~~env
+NODE_ENV=development
+PORT=3000
 
-# e2e tests
-$ npm run test:e2e
+DB_TYPE=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=oauth_user
+DB_PASSWORD=oauth_password
+DB_DATABASE=oauth_db
+DB_SYNCHRONIZE=true
 
-# test coverage
-$ npm run test:cov
-```
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
 
-## Deployment
+JWT_SECRET=super_secret_key_change_in_production_min_32_chars
+ACCESS_TOKEN_TTL_SECONDS=900
+REFRESH_TOKEN_TTL_SECONDS=604800
+WEBHOOK_EXPIRATION_THRESHOLD_SECONDS=180
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM="OAuth Provider <noreply@oauth.local>"
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+PROVIDER_FRONTEND_URL=http://localhost:5173
+~~~
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+Inicie os containers Docker:
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+~~~bash
+cd backend
+docker compose up -d
+~~~
 
-## Observability
+* **PostgreSQL:** Porta `5432`
+* **Redis:** Porta `6379`
+* **Mailpit (Interface Web de E-mails 2FA / Magic Link):** `http://localhost:8025`
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+### 3.3. Executando o Backend
+~~~bash
+cd backend
+npm install
+npm run start:dev
+~~~
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+Na inicialização, o backend executa o *seed* automático das credenciais de teste:
+* **Usuário sem 2FA:** `dev@oauth.local` | Senha: `Password@123`
+* **Usuário com 2FA:** `sec@oauth.local` | Senha: `Password@123`
+* **Client SPA Interno:** `client_id`: `internal-spa-client` | `client_secret`: `internal-secret-key-2026`
+* **Client Parceiro Externo:** `client_id`: `external-partner-client` | `client_secret`: `external-secret-key-2026`
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+### 3.4. Executando os Micro-Frontends
+O `provider-app` atua como *Remote* no Module Federation e precisa expor o artefato `dist/assets/remoteEntry.js`:
 
-To add it to this project, run this and approve the code it prints at [observe.nestjs.com/link](https://observe.nestjs.com/link) - signing up for free if you have no account:
+~~~bash
+# Terminal 2 - Provider App (Porta 5173)
+cd provider-app
+npm install
+npm run start:federated
+~~~
 
-```bash
-$ npx @nestjs/observe link
-```
+~~~bash
+# Terminal 3 - Client App (Porta 5174)
+cd client-app
+npm install
+npm run dev
+~~~
 
-It installs `@nestjs/observe`, wires it into `AppModule` and `main.ts`, and writes the app key and secret into `.env`, which every `nest start` script (`start`, `start:dev`, `start:debug`) then loads. In production, set `OBSERVE_APP_KEY` and `OBSERVE_APP_SECRET` in the environment instead.
+---
 
-Or do it by hand:
+## 4. Referência de Endpoints da API
 
-```bash
-$ npm install @nestjs/observe
-```
+| Método | Rota | Descrição | Autenticação |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/users/register` | Cria uma nova conta de usuário com hash `scrypt` | Pública |
+| `PATCH` | `/users/:id/2fa` | Ativa ou desativa a verificação em duas etapas (2FA) | Pública / Admin |
+| `GET` | `/oauth/clients` | Lista todos os clientes OAuth registrados | Pública / Admin |
+| `PATCH` | `/oauth/clients/webhook` | Atualiza a URL de destino do Webhook de um cliente | Pública / Admin |
+| `POST` | `/oauth/authorize/login` | Valida credenciais, registra geolocalização e emite `code` ou desafio 2FA | Pública |
+| `POST` | `/oauth/authorize/verify-2fa` | Valida o código de 6 dígitos no Redis e emite o `authorization_code` | Pública |
+| `POST` | `/oauth/authorize/magic-link` | Envia e-mail com token único de acesso rápido | Pública |
+| `POST` | `/oauth/authorize/magic-link/verify` | Consome o token do Magic Link e emite o `authorization_code` | Pública |
+| `POST` | `/oauth/token` | Troca `authorization_code` (PKCE), `client_credentials` ou `refresh_token` por JWT | Credenciais do Client |
+| `POST` | `/oauth/external/acquire` | Requisita token de API externa e registra monitoramento no Cron de Webhook | Interna / Backend |
+| `GET` | `/oauth/userinfo` | Retorna o payload da sessão validando assinatura JWT e Blacklist do Redis | `Bearer <JWT>` |
+| `GET` | `/sessions` | Lista o histórico de auditoria de sessões com IP e geolocalização | Pública / Admin |
+| `POST` | `/sessions/:jti/revoke` | Revoga imediatamente um token inserindo seu `jti` na Blacklist do Redis | Pública / Admin |
+| `POST` | `/webhooks/receiver` | Rota receptora padrão para testes de alertas de expiração | Assinatura HMAC |
+| `GET` | `/webhooks/alerts` | Lista os últimos alertas de expiração disparados pelo Cron Job | Pública |
 
-Then follow the [setup guide](https://docs.nestjs.com/observability/sdk) - it takes a single import and an app key.
+---
 
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
+## 5. Guia de Acoplamento em Outros Projetos
 
-## Resources
+Esta seção descreve como acoplar qualquer aplicação externa ao ecossistema OAuth 2.0.
 
-Check out a few resources that may come in handy when working with NestJS:
+### 5.1. Acoplando um Frontend Externo (SPA / Mobile com PKCE)
+Para autenticar qualquer SPA externa contra este Identity Provider:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+1. **Gere o par PKCE (`code_verifier` e `code_challenge` em SHA-256 Base64URL)** no cliente antes do redirecionamento e armazene o `code_verifier` no `sessionStorage`.
+2. **Redirecione o navegador do usuário** para a tela do Provider (`http://localhost:5173`):
+   ~~~text
+   http://localhost:5173/?client_id=SEU_CLIENT_ID&redirect_uri=SUA_URL_CALLBACK&code_challenge=DESAFIO_S256&code_challenge_method=S256&state=VALOR_CSRF
+   ~~~
+3. **Capture o `code` na sua rota de Callback** quando o Provider redirecionar de volta:
+   ~~~text
+   https://sua-app.com/callback?code=CODIGO_GERADO&state=VALOR_CSRF
+   ~~~
+4. **Efetue o POST para `/oauth/token`** enviando o `code_verifier` original:
+   ~~~typescript
+   const response = await fetch('http://localhost:3000/oauth/token', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({
+       grant_type: 'authorization_code',
+       client_id: 'internal-spa-client',
+       code: authorizationCode,
+       redirect_uri: 'http://localhost:5174/callback',
+       code_verifier: sessionStorage.getItem('oauth_pkce_verifier'),
+     }),
+   });
+   const { access_token, refresh_token } = await response.json();
+   ~~~
 
-## Support
+### 5.2. Acoplando um Microsserviço / API Externa (Server-to-Server)
+Para comunicação máquina-a-máquina sem interface de usuário, utilize o fluxo `client_credentials`:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+~~~typescript
+const response = await fetch('http://localhost:3000/oauth/token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    grant_type: 'client_credentials',
+    client_id: 'external-partner-client',
+    client_secret: 'external-secret-key-2026',
+    webhook_url: 'https://api-parceira.com/webhooks/token-expiring',
+  }),
+});
+const { access_token, expires_in, jti } = await response.json();
+~~~
 
-## Stay in touch
+### 5.3. Recebendo e Validando o Webhook de Expiração no Sistema Cliente
+Quando um token atingir o limiar configurado em `WEBHOOK_EXPIRATION_THRESHOLD_SECONDS`, o backend enviará um `POST` para a `webhook_url` cadastrada contendo o cabeçalho `X-Webhook-Signature`.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Exemplo de middleware/controller em Node.js na aplicação cliente para validar a autenticidade do alerta e renovar o token automaticamente:
 
-## License
+~~~typescript
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+export function verifyWebhookSignature(rawBody: string, signatureHeader: string, secret: string): boolean {
+  const expected = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signatureHeader);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+~~~
+
+Payload entregue pelo Webhook:
+~~~json
+{
+  "event": "token.expiring_soon",
+  "jti": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "clientId": "external-partner-client",
+  "userId": null,
+  "tokenContext": "ISSUED_BY_US",
+  "grantType": "client_credentials",
+  "expiresAt": "2026-11-08T21:15:00.000Z",
+  "remainingSeconds": 142,
+  "geolocation": {
+    "latitude": -8.047562,
+    "longitude": -34.876964
+  },
+  "timestamp": "2026-11-08T21:12:38.000Z"
+}
+~~~
+
+### 5.4. Acoplando a outro Banco de Dados Relacional (MySQL / MariaDB)
+Como as entidades foram construídas de forma agnóstica:
+1. Instale o driver correspondente no backend (`npm install mysql2`).
+2. Altere as variáveis no arquivo `.env`:
+   ~~~env
+   DB_TYPE=mysql
+   DB_PORT=3306
+   ~~~
+3. Nenhuma alteração nas entidades `User`, `OAuthClient` ou `SessionAudit` é necessária.
+
+### 5.5. Consumindo os Componentes Federados em Outro Host Vite
+Qualquer outra aplicação React + Vite pode importar os monitores e o gerador PKCE adicionando o `provider_app` nos `remotes` do `vite.config.ts`:
+
+~~~typescript
+federation({
+  name: 'novo_host',
+  remotes: {
+    provider_app: 'http://localhost:5173/assets/remoteEntry.js',
+  },
+  shared: ['react', 'react-dom', 'lucide-react', 'zod'],
+})
+~~~
