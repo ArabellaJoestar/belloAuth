@@ -8,10 +8,10 @@ export const geolocationSchema = z
   .optional();
 
 export const loginInitSchema = z.object({
-  email: z.string().email('E-mail invalido'),
+  email: z.email('E-mail invalido'),
   password: z.string().min(6, 'A senha deve ter no minimo 6 caracteres'),
   clientId: z.string().min(1),
-  redirectUri: z.string().url('redirectUri deve ser uma URL valida'),
+  redirectUri: z.url('redirectUri deve ser uma URL valida'),
   codeChallenge: z.string().min(43, 'codeChallenge PKCE deve ter no minimo 43 caracteres'),
   codeChallengeMethod: z.enum(['S256', 'plain']).default('S256'),
   state: z.string().optional(),
@@ -28,9 +28,9 @@ export const verifyTwoFactorSchema = z.object({
 export type VerifyTwoFactorDto = z.infer<typeof verifyTwoFactorSchema>;
 
 export const magicLinkRequestSchema = z.object({
-  email: z.string().email('E-mail invalido'),
+  email: z.email('E-mail invalido'),
   clientId: z.string().min(1),
-  redirectUri: z.string().url(),
+  redirectUri: z.url(),
   codeChallenge: z.string().min(43),
   codeChallengeMethod: z.enum(['S256', 'plain']).default('S256'),
   state: z.string().optional(),
@@ -74,10 +74,10 @@ export const tokenExchangeSchema = z.discriminatedUnion('grant_type', [
 export type TokenExchangeDto = z.infer<typeof tokenExchangeSchema>;
 
 export const externalTokenRequestSchema = z.object({
-  providerTokenUrl: z.string().url(),
+  providerTokenUrl: z.url(),
   clientId: z.string().min(1),
   clientSecret: z.string().min(1),
-  webhookCallbackUrl: z.string().url(),
+  webhookCallbackUrl: z.url(),
   ttlOverrideSeconds: z.number().int().min(30).max(3600).optional(),
   geolocation: geolocationSchema,
 });
@@ -86,7 +86,7 @@ export type ExternalTokenRequestDto = z.infer<typeof externalTokenRequestSchema>
 
 export const updateClientWebhookSchema = z.object({
   clientId: z.string().min(1),
-  webhookUrl: z.string().url(),
+  webhookUrl: z.url(),
 });
 
 export type UpdateClientWebhookDto = z.infer<typeof updateClientWebhookSchema>;
