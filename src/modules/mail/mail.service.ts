@@ -17,13 +17,15 @@ export class MailService {
       port: this.configService.get('SMTP_PORT'),
       secure: false,
       auth: user && pass ? { user, pass } : undefined,
-    });
+    },
+      {
+        from: this.configService.get('SMTP_FROM'),
+      }
+    );
   }
 
   async sendTwoFactorCode(email: string, code: string): Promise<void> {
-    const from = this.configService.get('SMTP_FROM');
     await this.transporter.sendMail({
-      from,
       to: email,
       subject: 'Seu codigo de verificacao 2FA - OAuth Provider',
       html: `
@@ -40,13 +42,11 @@ export class MailService {
   }
 
   async sendMagicLink(email: string, token: string, queryString: string): Promise<void> {
-    const from = this.configService.get('SMTP_FROM');
     const frontendUrl = this.configService.get('PROVIDER_FRONTEND_URL');
     const separator = queryString ? `&${queryString}` : '';
     const link = `${frontendUrl}/?magic_token=${encodeURIComponent(token)}${separator}`;
 
     await this.transporter.sendMail({
-      from,
       to: email,
       subject: 'Seu link de acesso rapido (Magic Link) - OAuth Provider',
       html: `
