@@ -72,7 +72,6 @@ PROVIDER_FRONTEND_URL=http://localhost:5173
 Inicie os containers Docker:
 
 ~~~bash
-cd backend
 docker compose up -d
 ~~~
 
@@ -82,7 +81,6 @@ docker compose up -d
 
 ### 3.3. Executando o Backend
 ~~~bash
-cd backend
 npm install
 npm run start:dev
 ~~~
