@@ -137,10 +137,10 @@ export class OAuthService implements OnModuleInit {
   private async validateClientAndRedirect(clientId: string, redirectUri: string): Promise<OAuthClient> {
     const client = await this.clientRepo.findOne({ where: { clientId, isActive: true } });
     if (!client) {
-      throw new UnauthorizedException('client_id invalido ou inativo.');
+      throw new UnauthorizedException('ID de usuário inválido ou inativo.');
     }
     if (!client.redirectUris.includes(redirectUri)) {
-      throw new BadRequestException('redirect_uri nao autorizada para este client.');
+      throw new BadRequestException('Redirecionamento não autorizado.');
     }
     return client;
   }
