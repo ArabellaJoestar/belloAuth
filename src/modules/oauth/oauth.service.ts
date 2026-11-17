@@ -77,7 +77,7 @@ export class OAuthService implements OnModuleInit {
     private readonly redisService: RedisService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService<EnvConfig, true>,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     await this.seedDefaultClients();
@@ -196,7 +196,7 @@ export class OAuthService implements OnModuleInit {
     const pending = await this.redisService.getJson<PendingAuthSession>(key);
 
     if (!pending || pending.twoFactorCode !== dto.code) {
-      throw new UnauthorizedException('Código 2FA invalido ou expirado.');
+      throw new UnauthorizedException('Código 2FA inválido ou expirado.');
     }
 
     await this.redisService.del(key);
@@ -212,7 +212,11 @@ export class OAuthService implements OnModuleInit {
 
     const user = await this.usersService.findByEmail(dto.email);
     if (!user) {
-      throw new UnauthorizedException('Usuario nao encontrado para envio de Magic Link.');
+      this.logger.warn(`Tentativa de requisição de Magic Link para e-mail não cadastrado. IP: ${ipAddress}`)
+      return {
+        message: `Se o e-mail estiver cadastrado em nosso sistema, será enviado um link de acesso. 
+        Verifique sua caixa de entrada e/ou spam.`
+      };
     }
 
     const magicToken = CryptoUtil.generateRandomToken(32);
@@ -241,8 +245,7 @@ export class OAuthService implements OnModuleInit {
     await this.mailService.sendMagicLink(user.email, magicToken, queryParams.toString());
 
     return {
-      sent: true,
-      message: 'Magic Link enviado para o e-mail. Verifique a caixa de entrada (Mailpit porta 8025).',
+      message: 'Se o e-mail estiver cadastrado em nosso sistema, será enviado um link de acesso. Verifique sua caixa de entrada e/ou spam.',
     };
   }
 
