@@ -220,7 +220,7 @@ export class OAuthService implements OnModuleInit {
     }
 
     const magicToken = CryptoUtil.generateRandomToken(32);
-    const pending: PendingAuthSession = {
+    const pendingSession: PendingAuthSession = {
       userId: user.id,
       email: user.email,
       clientId: dto.clientId,
@@ -234,7 +234,7 @@ export class OAuthService implements OnModuleInit {
       longitude: dto.geolocation?.longitude ?? null,
     };
 
-    await this.redisService.setJson(`oauth:magic:${magicToken}`, pending, 600);
+    await this.redisService.setJson(`oauth:magic:${magicToken}`, pendingSession, 600);
 
     const queryParams = new URLSearchParams({
       client_id: dto.clientId,
