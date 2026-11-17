@@ -154,12 +154,12 @@ export class OAuthService implements OnModuleInit {
 
     const user = await this.usersService.findByEmail(dto.email);
     if (!user || !CryptoUtil.verifySecret(dto.password, user.passwordHash)) {
-      throw new UnauthorizedException('Credenciais invalidas.');
+      throw new UnauthorizedException('Credenciais inválidas.');
     }
 
     const baseSession: PendingAuthSession = {
       userId: user.id,
-      email: user.email,
+      email: dto.email,
       clientId: dto.clientId,
       redirectUri: dto.redirectUri,
       codeChallenge: dto.codeChallenge,
@@ -184,7 +184,7 @@ export class OAuthService implements OnModuleInit {
       return {
         requiresTwoFactor: true,
         challengeId,
-        message: 'Codigo 2FA enviado para o seu e-mail.',
+        message: 'O Código 2FA foi enviado para o seu e-mail.',
       };
     }
 
@@ -196,7 +196,7 @@ export class OAuthService implements OnModuleInit {
     const pending = await this.redisService.getJson<PendingAuthSession>(key);
 
     if (!pending || pending.twoFactorCode !== dto.code) {
-      throw new UnauthorizedException('Codigo 2FA invalido ou expirado.');
+      throw new UnauthorizedException('Código 2FA invalido ou expirado.');
     }
 
     await this.redisService.del(key);
