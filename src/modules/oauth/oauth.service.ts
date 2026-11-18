@@ -77,7 +77,7 @@ export class OAuthService implements OnModuleInit {
     private readonly redisService: RedisService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService<EnvConfig, true>,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     await this.seedDefaultClients();
@@ -137,10 +137,10 @@ export class OAuthService implements OnModuleInit {
   private async validateClientAndRedirect(clientId: string, redirectUri: string): Promise<OAuthClient> {
     const client = await this.clientRepo.findOne({ where: { clientId, isActive: true } });
     if (!client) {
-      throw new UnauthorizedException('client_id invalido ou inativo.');
+      throw new UnauthorizedException('ID de usuário inválido ou inativo.');
     }
     if (!client.redirectUris.includes(redirectUri)) {
-      throw new BadRequestException('redirect_uri nao autorizada para este client.');
+      throw new BadRequestException('Redirecionamento não autorizado.');
     }
     return client;
   }
@@ -154,12 +154,12 @@ export class OAuthService implements OnModuleInit {
 
     const user = await this.usersService.findByEmail(dto.email);
     if (!user || !CryptoUtil.verifySecret(dto.password, user.passwordHash)) {
-      throw new UnauthorizedException('Credenciais invalidas.');
+      throw new UnauthorizedException('Credenciais inválidas.');
     }
 
     const baseSession: PendingAuthSession = {
       userId: user.id,
-      email: user.email,
+      email: dto.email,
       clientId: dto.clientId,
       redirectUri: dto.redirectUri,
       codeChallenge: dto.codeChallenge,
@@ -184,7 +184,7 @@ export class OAuthService implements OnModuleInit {
       return {
         requiresTwoFactor: true,
         challengeId,
-        message: 'Codigo 2FA enviado para o seu e-mail.',
+        message: 'O Código 2FA foi enviado para o seu e-mail.',
       };
     }
 
@@ -196,7 +196,7 @@ export class OAuthService implements OnModuleInit {
     const pending = await this.redisService.getJson<PendingAuthSession>(key);
 
     if (!pending || pending.twoFactorCode !== dto.code) {
-      throw new UnauthorizedException('Codigo 2FA invalido ou expirado.');
+      throw new UnauthorizedException('Código 2FA inválido ou expirado.');
     }
 
     await this.redisService.del(key);
@@ -212,11 +212,15 @@ export class OAuthService implements OnModuleInit {
 
     const user = await this.usersService.findByEmail(dto.email);
     if (!user) {
-      throw new UnauthorizedException('Usuario nao encontrado para envio de Magic Link.');
+      this.logger.warn(`Tentativa de requisição de Magic Link para e-mail não cadastrado. IP: ${ipAddress}`)
+      return {
+        message: `Se o e-mail estiver cadastrado em nosso sistema, será enviado um link de acesso. 
+        Verifique sua caixa de entrada e/ou spam.`
+      };
     }
 
     const magicToken = CryptoUtil.generateRandomToken(32);
-    const pending: PendingAuthSession = {
+    const pendingSession: PendingAuthSession = {
       userId: user.id,
       email: user.email,
       clientId: dto.clientId,
@@ -230,7 +234,7 @@ export class OAuthService implements OnModuleInit {
       longitude: dto.geolocation?.longitude ?? null,
     };
 
-    await this.redisService.setJson(`oauth:magic:${magicToken}`, pending, 600);
+    await this.redisService.setJson(`oauth:magic:${magicToken}`, pendingSession, 600);
 
     const queryParams = new URLSearchParams({
       client_id: dto.clientId,
@@ -241,21 +245,20 @@ export class OAuthService implements OnModuleInit {
     await this.mailService.sendMagicLink(user.email, magicToken, queryParams.toString());
 
     return {
-      sent: true,
-      message: 'Magic Link enviado para o e-mail. Verifique a caixa de entrada (Mailpit porta 8025).',
+      message: 'Se o e-mail estiver cadastrado em nosso sistema, será enviado um link de acesso. Verifique sua caixa de entrada e/ou spam.',
     };
   }
 
   async verifyMagicLink(dto: MagicLinkVerifyDto) {
     const key = `oauth:magic:${dto.token}`;
-    const pending = await this.redisService.getJson<PendingAuthSession>(key);
+    const pendingSession = await this.redisService.getJson<PendingAuthSession>(key);
 
-    if (!pending) {
-      throw new UnauthorizedException('Magic Link invalido, expirado ou ja utilizado.');
+    if (!pendingSession) {
+      throw new UnauthorizedException('Link de acesso inválido, expirado ou já utilizado.');
     }
 
     await this.redisService.del(key);
-    return this.issueAuthorizationCodeFromSession(pending);
+    return this.issueAuthorizationCodeFromSession(pendingSession);
   }
 
   private async issueAuthorizationCodeFromSession(session: PendingAuthSession) {
