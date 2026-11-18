@@ -145,6 +145,29 @@ export class OAuthService implements OnModuleInit {
     return client;
   }
 
+  private async checkIpBlaclist(ipAddress: string | null | undefined) {
+    const failKey = `login_fails:ip:${ipAddress}`;
+    if (ipAddress != null && ipAddress != "" && ipAddress != undefined) {
+      const failedAttemps = await this.redisService.increment(failKey);
+
+      if (failedAttemps === 1) {
+        await this.redisService.expire(failKey, 900);
+      }
+
+      if (failedAttemps >= 5) {
+        await this.redisService.setString(`blacklist:ip:${ipAddress}`, 'blocked', 86400);
+      }
+
+    }
+
+    return failKey
+  }
+
+  private async deleteLoginFailsBlacklist(ipAddress: string | null | undefined) {
+    const failKey = `login_fails:ip:${ipAddress}`;
+    await this.redisService.del(failKey)
+  }
+
   async initiateLogin(
     dto: LoginInitDto,
     ipAddress: string | null,
@@ -154,17 +177,7 @@ export class OAuthService implements OnModuleInit {
 
     const user = await this.usersService.findByEmail(dto.email);
     if (!user || !CryptoUtil.verifySecret(dto.password, user.passwordHash)) {
-      const failKey = `login_fails:ip:${ipAddress}`;
-      const failedAttemps = await this.redisService.increment(failKey);
-
-      if(failedAttemps === 1){
-        await this.redisService.expire(failKey, 900);
-      }
-
-      if(failedAttemps >= 5){
-        await this.redisService.setString(`blacklist:ip:${ipAddress}`, 'blocked', 86400);
-      }
-
+      await this.checkIpBlaclist(ipAddress)
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
@@ -198,8 +211,9 @@ export class OAuthService implements OnModuleInit {
         message: 'O Código 2FA foi enviado para o seu e-mail.',
       };
     }
-
-    await this.redisService.del(`login_fails:ip:${ipAddress}`)
+    if(ipAddress !== null){
+      await this.deleteLoginFailsBlacklist(ipAddress)
+    }
 
     return this.issueAuthorizationCodeFromSession(baseSession);
   }
@@ -208,11 +222,14 @@ export class OAuthService implements OnModuleInit {
     const key = `oauth:2fa:${dto.challengeId}`;
     const pending = await this.redisService.getJson<PendingAuthSession>(key);
 
+
     if (!pending || pending.twoFactorCode !== dto.code) {
+      this.checkIpBlaclist(pending?.ipAddress)
       throw new UnauthorizedException('Código 2FA inválido ou expirado.');
     }
 
-    await this.redisService.del(key);
+    this.deleteLoginFailsBlacklist(pending.ipAddress)
+    
     return this.issueAuthorizationCodeFromSession(pending);
   }
 
