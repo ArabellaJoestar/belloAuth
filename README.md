@@ -98,14 +98,14 @@ O `provider-app` atua como *Remote* no Module Federation e precisa expor o artef
 # Terminal 2 - Provider App (Porta 5173)
 cd provider-app
 npm install
-npm run start:federated
+npm run start:dev
 ~~~
 
 ~~~bash
 # Terminal 3 - Client App (Porta 5174)
 cd client-app
 npm install
-npm run dev
+npm run start:dev
 ~~~
 
 ---

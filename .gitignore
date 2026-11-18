@@ -3,6 +3,7 @@ node_modules/
 
 # Build do NestJS
 dist/
+tsconfig.build.tsbuildinfo
 
 # Variáveis de ambiente (NUNCA comite o .env)
 .env
