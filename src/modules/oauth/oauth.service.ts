@@ -251,14 +251,14 @@ export class OAuthService implements OnModuleInit {
 
   async verifyMagicLink(dto: MagicLinkVerifyDto) {
     const key = `oauth:magic:${dto.token}`;
-    const pending = await this.redisService.getJson<PendingAuthSession>(key);
+    const pendingSession = await this.redisService.getJson<PendingAuthSession>(key);
 
-    if (!pending) {
-      throw new UnauthorizedException('Magic Link invalido, expirado ou ja utilizado.');
+    if (!pendingSession) {
+      throw new UnauthorizedException('Link de acesso inválido, expirado ou já utilizado.');
     }
 
     await this.redisService.del(key);
-    return this.issueAuthorizationCodeFromSession(pending);
+    return this.issueAuthorizationCodeFromSession(pendingSession);
   }
 
   private async issueAuthorizationCodeFromSession(session: PendingAuthSession) {

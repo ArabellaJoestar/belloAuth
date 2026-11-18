@@ -9,6 +9,8 @@ import { UsersModule } from './modules/users/users.module.js';
 import { SessionsModule } from './modules/sessions/sessions.module.js';
 import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
 import { OAuthModule } from './modules/oauth/oauth.module.js';
+import { APP_GUARD } from '@nestjs/core';
+import { IpBlacklistGuard } from './common/guards/ipblacklist.guard.js';
 
 @Module({
   imports: [
@@ -25,5 +27,11 @@ import { OAuthModule } from './modules/oauth/oauth.module.js';
     WebhooksModule,
     OAuthModule,
   ],
+  providers:[
+    {
+      provide: APP_GUARD,
+      useClass: IpBlacklistGuard
+    }
+  ]
 })
 export class AppModule {}

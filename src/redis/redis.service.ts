@@ -60,4 +60,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const result = await this.client.exists(`blacklist:jti:${jti}`);
     return result === 1;
   }
+
+  async increment(key: string): Promise<number> {
+    return this.client.incr(key);
+  }
+
+  async expire(key: string, ttlSeconds: number): Promise<void> {
+    await this.client.expire(key, ttlSeconds);
+  }
 }
