@@ -137,7 +137,7 @@ export class OAuthService implements OnModuleInit {
   private async validateClientAndRedirect(clientId: string, redirectUri: string): Promise<OAuthClient> {
     const client = await this.clientRepo.findOne({ where: { clientId, isActive: true } });
     if (!client) {
-      throw new UnauthorizedException('ID de usuário inválido ou inativo.');
+      throw new UnauthorizedException('Credenciais inválidas.');
     }
     if (!client.redirectUris.includes(redirectUri)) {
       throw new BadRequestException('Redirecionamento não autorizado.');
@@ -154,6 +154,17 @@ export class OAuthService implements OnModuleInit {
 
     const user = await this.usersService.findByEmail(dto.email);
     if (!user || !CryptoUtil.verifySecret(dto.password, user.passwordHash)) {
+      const failKey = `login_fails:ip:${ipAddress}`;
+      const failedAttemps = await this.redisService.increment(failKey);
+
+      if(failedAttemps === 1){
+        await this.redisService.expire(failKey, 900);
+      }
+
+      if(failedAttemps >= 5){
+        await this.redisService.setString(`blacklist:ip:${ipAddress}`, 'blocked', 86400);
+      }
+
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
@@ -187,6 +198,8 @@ export class OAuthService implements OnModuleInit {
         message: 'O Código 2FA foi enviado para o seu e-mail.',
       };
     }
+
+    await this.redisService.del(`login_fails:ip:${ipAddress}`)
 
     return this.issueAuthorizationCodeFromSession(baseSession);
   }
