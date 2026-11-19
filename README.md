@@ -79,33 +79,38 @@ docker compose up -d
 * **Redis:** Porta `6379`
 * **Mailpit (Interface Web de E-mails 2FA / Magic Link):** `http://localhost:8025`
 
-### 3.3. Executando o Backend
+### 3.3. Instalando pré-requisitos do backend
 ~~~bash
 npm install
-npm run start:dev
 ~~~
 
-Na inicialização, o backend executa o *seed* automático das credenciais de teste:
-* **Usuário sem 2FA:** `dev@oauth.local` | Senha: `Password@123`
-* **Usuário com 2FA:** `sec@oauth.local` | Senha: `Password@123`
-* **Client SPA Interno:** `client_id`: `internal-spa-client` | `client_secret`: `internal-secret-key-2026`
-* **Client Parceiro Externo:** `client_id`: `external-partner-client` | `client_secret`: `external-secret-key-2026`
-
-### 3.4. Executando os Micro-Frontends
+### 3.4. Instalando pré-requisitos dos Micro-Frontends
 O `provider-app` atua como *Remote* no Module Federation e precisa expor o artefato `dist/assets/remoteEntry.js`:
 
 ~~~bash
-# Terminal 2 - Provider App (Porta 5173)
 cd provider-app
 npm install
-npm run start:dev
 ~~~
 
 ~~~bash
-# Terminal 3 - Client App (Porta 5174)
 cd client-app
 npm install
+~~~
+
+### 3.4. Executando o API e Micro-Frontends
+O script foi feito para facilitar o setup da aplicação a nível do ambiente de desenvolvimento, entretanto caso seja desejável realizar um setup individual, o comando a seguir deve ser executado dentro das pastas referentes:
+
+~~~bash
 npm run start:dev
+~~~
+
+Para o setup automatizado de todo o ambiente de desenvolvimento esse script deve ser executado:
+
+~~~bash
+# Terminal 1 - Backend (Porta 3000)
+# Terminal 2 - Provider App (Porta 5173)
+# Terminal 3 - Client App (Porta 5174)
+.\start.dev.ps1
 ~~~
 
 ---
